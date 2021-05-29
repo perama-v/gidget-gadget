@@ -137,7 +137,7 @@ while True:
             mem_bars_mean, mem_bars_max, mem_bars_min = pack_txs(mem_txs)  # get new mempool bars for graph
             hist_mean, _ , _ =  pack_txs(block_txs)
             block_history.append(hist_mean)
-            if len(block_history)>20:
+            if len(block_history)>40:
                 block_history.pop(0)
             proj_up = get_projections(basefee, upward = True)
             proj_down = get_projections(basefee, upward = False)
