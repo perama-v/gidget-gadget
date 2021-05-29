@@ -2,7 +2,6 @@ import random
 import curses
 import time
 import bisect
-import itertools
 
 # Initialize screen
 sc = curses.initscr()  # get curses window object.
@@ -19,7 +18,7 @@ x_loc = h - x_offset  # y coord of the graphs horizontal axis.
 y_head = 4  # Dist: y -> window top.
 y_len = h - (y_head + x_offset + 1)  # Length of y axis.
 bf_yloc = y_head + y_len//2  # y coord of basefee start pos.
-block_width = 8  # Character width of a steady-state block.
+block_width = 5  # Character width of a steady-state block.
 bf_line = '-'  # Block starting appearance
 bf_notch = w//2 + block_width + 1  # xloc of center of basefee padddle
 
@@ -29,15 +28,9 @@ gas_per_char = block_gas // block_width  # How much gas one character represents
 gas_per_tx = 100000  # Fixed (~150tx per block at 15mill gas blocks).
 txs_per_char = gas_per_char // gas_per_tx  # Num txs that fit in one character.
 mem_width = w//2 - (block_width * 2 + lr_margin)  # Number of characters wide the mempool is.
-block_time = 3  # Seconds per block.
+block_time = 4  # Seconds per block.
 block_made = False  # Detect if need to build a block
 rescale_trigger = 0.3  # Rescale y ax if basefee gets within this fraction from either end.
-
-# Initial conditions
-snake_head = [3,15]
-snake_position = [[15,3],[14,3],[13,3]]
-apple_position = [20,20]
-score = 0
 
 mem_txs = []  # Mempool transaction prices in Gwei.
 mem_bars_mean = []  # Average tx gas price in each mempool column.
@@ -48,12 +41,15 @@ num_projections = 24  # Number of projections to graph.
 proj_up = []  # Max projected basefee changes.
 proj_down = []  # Min rojected basefee changes.
 prog_start = True  # Starting condition.
+block_history = []  # Record of most recent blocks.
 
 prev_button_direction = 1
 button_direction = 1
 key = curses.KEY_RIGHT
 numpad = [ord(str(i)) for i in range(10)]  # For number 1: numpad[1] = 49.
 gwei_zeros = 10  # Five if pressed: 10 = 50 Gwei, 100 = 500 Gwei.
+new_txs_per_keypress = 500  # Pressing one number generates this many Txs
+new_tx_spread = 0.2  # New txs are distributed randomnly +/- % around chosed gas price.
 
 def get_gwei_loc(gwei):
     # Finds y coord of given gwei
@@ -68,32 +64,45 @@ def pack_txs(mem_txs):
 
     bucket_list_mean = []  # average gas price in each group
     bucket_list_max = []  # max tx gas price in each group
-
+    bucket_list_min = []  # min tx gas price in each group
+    reversed_txs = mem_txs[::-1]
     for i in range(0, len(mem_txs), txs_per_char):
-        #  Go through txs is chucks as large as one-character
-        group = mem_txs[::-1][i: i+10]
+        #  Go through txs in chucks as large as one-character
+        group = reversed_txs[i: i+txs_per_char]
         average = int(sum(group)/len(group))
         bucket_list_mean.append(average)
         bucket_list_max.append(group[0])
+        bucket_list_min.append(group[-1])
     # Return buckets, ordered large to small
-    return bucket_list_mean, bucket_list_max
+    return bucket_list_mean, bucket_list_max, bucket_list_max
 
 def get_projections(basefee, upward=True):
     # Calculates projected max/min basefees and returns their y coords.
-    # Fee = Fee + (or -) Fee * 1/8
-    # Fee *= (9/8)**n or Fee *= (7/8)**n
+    # Fee = Fee + (or -) Fee * 1/8.
+    # Fee *= (9/8)**n or Fee *= (7/8)**n.
     factor = 9/8
     if not upward:
         factor = 7/8
     fee_loc_array = [(basefee * pow(factor,i+1)) for i in range(num_projections)]
     return fee_loc_array
 
+def construct_block(basefee, mempool_txs):
+    # Builds a block from mempool txs
+    stable_block = block_gas // gas_per_tx  # Num txs in a stable block.
+    max_txs = 2 * stable_block  # Max elastic block capacity for average txs.
+    index_of_first_valid = bisect.bisect_left(mempool_txs, basefee)
+    eligible_txs = mempool_txs[index_of_first_valid:]
+    eligible_high_to_low = eligible_txs[::-1]
+    block_tx_list = eligible_high_to_low[:max_txs]
+    block_size = len(block_tx_list) * gas_per_tx
+    new_basefee = basefee * (1 + (1/8)*(block_size - block_gas)/block_gas)
+    updated_mempool_txs = mempool_txs[:-len(block_tx_list) or None]  # Remove txs from mempool once included
+    assert len(block_tx_list) + len(updated_mempool_txs) == len (mempool_txs)
+    return block_tx_list, new_basefee, updated_mempool_txs
+
 while True:
     win.border(0)
     win.timeout(100)
-
-
-
     next_key = win.getch()
 
     if next_key == -1:
@@ -101,26 +110,35 @@ while True:
     else:
         key = next_key
 
+    # Accept user input, transactions are added by pressing numpad keys.
     if key == ord('q'):
         break
     elif key in numpad and key != 48 :  # Ignore zero
         selected_gwei = numpad.index(key) * gwei_zeros # Desired gwei.
-        pos = bisect.bisect(mem_txs, selected_gwei)  # index to put new txs.
-        new_txs = [selected_gwei] * 10  # new txs.
-        mem_txs = mem_txs[:pos] + new_txs + mem_txs[pos:]  # add to mempool.
-        mem_bars_mean, mem_bars_max = pack_txs(mem_txs)  # get new mempool bars for graph
+        #pos = bisect.bisect(mem_txs, selected_gwei)  # index to put new txs.
+        gwei_low = int(selected_gwei * (1 - new_tx_spread))
+        gwei_high = int(selected_gwei * (1 + new_tx_spread))
+        #new_txs = []
+        for i in range(new_txs_per_keypress):
+            mem_txs.append(random.randint(gwei_low, gwei_high))
+        #mem_txs = mem_txs[:pos] + new_txs + mem_txs[pos:]  # add to mempool.
+        mem_txs.sort()
+        mem_bars_mean, mem_bars_max, mem_bars_min = pack_txs(mem_txs)  # get new mempool bars for graph
 
         key = -1
         win.clear()
     else:
         pass
 
-
     # Make block
     if int(time.time()) % block_time == 0 or prog_start:
         if not block_made:
-            # construct_block()
-            basefee *= 7/8
+            block_txs, basefee, mem_txs = construct_block(basefee, mem_txs)
+            mem_bars_mean, mem_bars_max, mem_bars_min = pack_txs(mem_txs)  # get new mempool bars for graph
+            hist_mean, _ , _ =  pack_txs(block_txs)
+            block_history.append(hist_mean)
+            if len(block_history)>20:
+                block_history.pop(0)
             proj_up = get_projections(basefee, upward = True)
             proj_down = get_projections(basefee, upward = False)
             if basefee >= (1 - rescale_trigger) * max_gwei:
@@ -139,27 +157,27 @@ while True:
             block_made = False
             win.clear()
 
-
-
-    # Calc fee
-    #basefee *= updown / 8
-
-
-
-    # display dynamic elements
+    # Draw dynamic axis elements
     win.vline(bf_yloc-2, bf_notch, '>',2)  # basefee paddle steady-state notch.
     win.hline(bf_yloc, w//2+1 , bf_line, block_width * 2)  # basefee paddle.
     win.addstr(y_head+1, w//2 - 4, str(int(max_gwei)))  # Y-axis max gwei.
     win.addstr(bf_yloc, w//2 - 4 , str(int(basefee)))  # basefee.
+    win.addstr(get_gwei_loc(basefee*1.2), w//2 - 4 , str(int(basefee*1.2)))  # a number above basefee.
+    win.addstr(get_gwei_loc(basefee*0.8), w//2 - 4 , str(int(basefee*0.8)))  # a number below basefee.
+
+    # Draw mempool
     if mem_bars_mean != []:
         for i in range(min(len(mem_bars_mean),mem_width)):
+            # Get y coord for each mempool vertical line component
             max_mem_tip = get_gwei_loc(min(mem_bars_max[i], max_gwei))
-            # Draw mempool txs
-            win.vline(max_mem_tip, w//2+block_width*2+i , '*', x_loc - max_mem_tip) # Max
             mean_mem_tip = get_gwei_loc(min(mem_bars_mean[i], max_gwei))
-            win.vline(mean_mem_tip, w//2+block_width*2+i , "T", x_loc - mean_mem_tip) # Mean
+            min_mem_tip = get_gwei_loc(min(mem_bars_min[i], max_gwei))
+            # Draw mempool tx stat per bin
+            win.vline(max_mem_tip, w//2+block_width*2+i , '*', 1) # Max
+            win.vline(mean_mem_tip, w//2+block_width*2+i , '#', min_mem_tip - max_mem_tip) # Mean
+            win.vline(max_mem_tip, w//2+block_width*2+i , '.', 1) # Min
 
-
+    # Draw projections
     for i in range(num_projections):
         proj_num = str(i+1)
         if i>8:
@@ -173,9 +191,20 @@ while True:
             win.hline(get_gwei_loc(proj_up[i]), elem_start, '~', block_width * 2)
             win.hline(get_gwei_loc(proj_up[i]), elem_start + block_width, proj_num, 1)
 
+    # Draw history
+    spacer = 4
+    reversed_history = block_history[::-1]
+    for i, block in enumerate(reversed_history):
+        spacer += len(block)
+        for j, tx_bin in enumerate(block):
+            hist_x_coord = w//2-spacer+j
+            if len(block) > 0 and hist_x_coord > lr_margin:
+                mean_mem_tip = get_gwei_loc(min(tx_bin, max_gwei))
+                win.vline(mean_mem_tip, hist_x_coord, '.', 1) # Histroical means.
 
 
-    # display static elements
+
+    # Draw static elements
     win.vline(y_head, w//2, '^', 1)  # y-arrowhead.
     win.vline(y_head + 1, w//2, '|', y_len)  # y ax.
     win.hline(x_loc, lr_margin , '-', w - lr_margin * 2)  # x ax
