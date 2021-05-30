@@ -9,6 +9,8 @@ An implementation of some basefee dynamics.
 - See gwei-gwei into the future.
 - Experience the joy of exponentiation.
 
+![preview](example.png)
+
 ## How to play
 
 ``gidget-gadget`` uses python 3.x and native libraries only, so no
@@ -42,8 +44,6 @@ Parameters:
 - Fee range: Currently limited to numpad (~10-90 gwei)
 
 Its rickety and doesn't simulate all the dynamics of the fee market. Feel free to play around with the parameters and leave suggestions/PRs.
-
-![preview](example.png)
 
 ## Rationale
 
