@@ -3,7 +3,6 @@ import curses
 import bisect
 import time
 
-
 # Initialize screen
 sc = curses.initscr()  # get curses window object.
 h, w = sc.getmaxyx()  # get height and width of terminal.
@@ -162,8 +161,6 @@ while True:
             block_made = False
             win.clear()
 
-
-
     # Draw history
     spacer = 4
     reversed_history = block_history[::-1]
@@ -191,8 +188,6 @@ while True:
             bf_end = 'x'
         win.hline(his_bf_loc, w//2-spacer , bf_end, 1)  # lef hist_basefee paddle.
         win.hline(his_bf_loc, w//2-spacer+len(block), bf_end, 1)  # right hist_basefee paddle.
-
-
 
     # Draw mempool
     if mem_bars_mean != []:
@@ -234,7 +229,6 @@ while True:
     win.vline(y_head, w//2, '^', 1)  # y-arrowhead.
     win.vline(y_head + 1, w//2, '|', y_len)  # y ax.
     win.hline(x_loc, lr_margin , '-', w - lr_margin * 2)  # x ax
-
 
 sc.addstr(h//2, w//2, 'Bye-o!')
 sc.refresh()
