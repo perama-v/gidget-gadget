@@ -1,7 +1,8 @@
 import random
 import curses
-import time
 import bisect
+import time
+
 
 # Initialize screen
 sc = curses.initscr()  # get curses window object.
