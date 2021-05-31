@@ -21,7 +21,9 @@ with keyboard input. Run:
 
 Controls:
 - Press `q` to quit
-- Press a number: `5` sends 150 transacations each with a 50 (+/-20%) Gwei basefee
+- Press a number: `5` sends 30 transactions each with a 50 (+/-20%) Gwei basefee
+- Press `b` to send 30 transactions each with basefee equal to current basefee. This mode mimics
+    behaviour where you send the minimum viable fee.
 
 Mempool transactions are sorted, queued and fed left to right to the block producer. The transactions are valid if their fee is greater than the basefee.
 
