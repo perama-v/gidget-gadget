@@ -48,7 +48,7 @@ button_direction = 1
 key = curses.KEY_RIGHT
 numpad = [ord(str(i)) for i in range(10)]  # For number 1: numpad[1] = 49.
 gwei_zeros = 10  # Five if pressed: 10 = 50 Gwei, 100 = 500 Gwei.
-new_txs_per_keypress = 150  # Pressing one number generates this many Txs
+new_txs_per_keypress = 30  # Pressing one number generates this many Txs
 new_tx_spread = 0.2  # New txs are distributed randomnly +/- % around chosed gas price.
 
 def get_gwei_loc(gwei):
@@ -113,6 +113,15 @@ while True:
     # Accept user input, transactions are added by pressing numpad keys.
     if key == ord('q'):
         break
+    elif key == ord('b'):
+        # Press 'b' to send transactions at exactly the current basefee.
+        for i in range(new_txs_per_keypress):
+            mem_txs.append(basefee)
+        mem_txs.sort()
+        mem_bars_mean, mem_bars_max, mem_bars_min = pack_txs(mem_txs)  # get new mempool bars for graph
+
+        key = -1
+        win.clear()
     elif key in numpad and key != 48 :  # Ignore zero
         selected_gwei = numpad.index(key) * gwei_zeros # Desired gwei.
         #pos = bisect.bisect(mem_txs, selected_gwei)  # index to put new txs.
